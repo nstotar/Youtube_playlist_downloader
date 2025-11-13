@@ -1,30 +1,15 @@
+import streamlit as st
 import os
-from pytubefix import YouTube, Playlist
-import ipywidgets as widgets
-from IPython.display import display
+from pytube import YouTube, Playlist
 
-# Define save location
-save_path = os.path.join(os.getcwd(), "downloads")
-os.makedirs(save_path, exist_ok=True)
+# DEFAULT DOWNLOAD PATH (within app folder)
+DOWNLOAD_DIR = os.path.join(os.getcwd(), "downloads")
+os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
-print("📂 Downloads will be saved inside:", save_path)  # Create folder if not exists
+st.title("YouTube Video & Playlist Downloader")
+st.info(f"📂 Downloads will be saved in: `{DOWNLOAD_DIR}`")
 
-link_input = widgets.Text(
-    value='',
-    placeholder='Paste YouTube video or playlist link here',
-    description='Link:',
-    disabled=False
-)
-
-download_button = widgets.Button(
-    description='Download',
-    button_style='success',
-    tooltip='Click to download video/playlist',
-    icon='⬇️'
-)
-
-output = widgets.Output()
-
+link = st.text_input("Paste YouTube video or playlist link", "")
 
 def normalize_link(link: str) -> str:
     if "youtu.be" in link:
@@ -32,42 +17,37 @@ def normalize_link(link: str) -> str:
         return f"https://www.youtube.com/watch?v={video_id}"
     return link
 
-# Download function
-def download_video(b):
-    output.clear_output()
-    with output:
-        link = normalize_link(link_input.value.strip())
-        if not link:
-            print("❌ Please enter a valid YouTube link")
-            return
+if st.button("⬇️ Download"):
+    link = normalize_link(link.strip())
+    if not link:
+        st.error("❌ Please enter a valid YouTube link")
+    else:
         try:
             if "playlist" in link.lower():
-                # Playlist download
                 p = Playlist(link)
-                total_videos = len(p.videos)
-                print(f"📂 Downloading Playlist: {p.title} ({total_videos} videos)")
-                
-                for idx, video in enumerate(p.videos, start=1):
-                    print(f"🎬 ({idx}/{total_videos}) {video.title}")
-                    stream = video.streams.filter(progressive=True, file_extension="mp4") \
-                                          .order_by("resolution") \
-                                          .desc() \
-                                          .first()
-                    stream.download(output_path=desktop)
-                print(f"✅ Playlist download completed! Saved to: {desktop}")
+                total_videos = len(p.video_urls)
+                st.write(f"📂 Downloading Playlist: `{p.title}` ({total_videos} videos)")
+                progress_bar = st.progress(0)
+                for idx, video_url in enumerate(p.video_urls, start=1):
+                    yt = YouTube(video_url)
+                    st.write(f"🎬 ({idx}/{total_videos}) {yt.title}")
+                    stream = yt.streams.filter(progressive=True, file_extension="mp4").order_by("resolution").desc().first()
+                    if stream:
+                        stream.download(output_path=DOWNLOAD_DIR)
+                    else:
+                        st.warning(f"⚠️ No suitable MP4 stream for {yt.title}")
+                    progress_bar.progress(idx / total_videos)
+                st.success(f"✅ Playlist download completed! Saved to: `{DOWNLOAD_DIR}`")
             else:
-                # Single video download
                 yt = YouTube(link)
-                print(f"🎬 Downloading: {yt.title}")
-                stream = yt.streams.filter(progressive=True, file_extension="mp4") \
-                                   .order_by("resolution") \
-                                   .desc() \
-                                   .first()
-                stream.download(output_path=desktop)
-                print(f"✅ Video download completed! Saved to: {desktop}")
+                st.write(f"🎬 Downloading: `{yt.title}`")
+                stream = yt.streams.filter(progressive=True, file_extension="mp4").order_by("resolution").desc().first()
+                if stream:
+                    stream.download(output_path=DOWNLOAD_DIR)
+                    st.success(f"✅ Video download completed! Saved to: `{DOWNLOAD_DIR}`")
+                else:
+                    st.warning("⚠️ No suitable MP4 stream found for this video.")
         except Exception as e:
-            print(f"⚠️ Error: {e}")
+            st.error(f"⚠️ Error: {e}")
 
-download_button.on_click(download_video)
-
-display(link_input, download_button, output)
+st.caption("Only public videos and playlists are supported. Large playlists may take time.")
